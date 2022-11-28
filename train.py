@@ -32,7 +32,7 @@ def orthogonal_loss(model, ort_vectors, index):
                                                      stride=child.stride,
                                                      padding=child.padding)
             loss += torch.linalg.norm(x - vector)
-            shapes += 2 * child.K3.shape[0] ** 2
+            shapes += 2 * child.weight.shape[0] ** 2
         else:
             loss_, shapes_ = orthogonal_loss(child, ort_vectors, index)
             loss += loss_
