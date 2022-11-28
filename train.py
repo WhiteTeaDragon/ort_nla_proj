@@ -11,8 +11,8 @@ from contextlib import redirect_stdout
 import io
 import torchsummary as ts
 
-from WideResNet import wide_resnet16_10
-from vgg import vgg19
+from .WideResNet import wide_resnet16_10
+from .vgg import vgg19
 
 if torch.cuda.is_available():
     device = torch.device('cuda:0')
