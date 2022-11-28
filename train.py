@@ -25,6 +25,7 @@ def orthogonal_loss(model, ort_vectors, index):
     for child_name, child in model.named_children():
         if 'Conv' in child.__class__.__name__:
             vector = ort_vectors[index]
+            index += 1
             x_p = torch.nn.functional.conv2d(vector, child.weight,
                                              stride=child.stride,
                                              padding=child.padding)
@@ -34,11 +35,10 @@ def orthogonal_loss(model, ort_vectors, index):
             loss += torch.linalg.norm(x - vector)
             shapes += 2 * child.weight.shape[0] ** 2
         else:
-            loss_, shapes_ = orthogonal_loss(child, ort_vectors, index)
+            loss_, shapes_, index = orthogonal_loss(child, ort_vectors, index)
             loss += loss_
             shapes += shapes_
-        index += 1
-    return loss, shapes
+    return loss, shapes, index
 
 
 def count_acc(loader, criterion=nn.CrossEntropyLoss()):
@@ -102,7 +102,7 @@ def get_conv_output_shapes(model, shape=(3, 32, 32)):
     conv_lines = [line for line in output.split('\n') if 'Conv' in line or
                   'CiTT' in line]
     conv_outputs = [list(map(int, line.split('[')[1].split(']')[0].split(',')))
-                    [2:] for line in conv_lines]
+                    [1:] for line in conv_lines]
     return conv_outputs
 
 
@@ -248,7 +248,7 @@ if __name__ == '__main__':
             loss = criterion(output, y)
             if orthogonal:
                 orthogonal = True
-                loss_, shapes_ = orthogonal_loss(model, ort_vectors, 0)
+                loss_, shapes_, _ = orthogonal_loss(model, ort_vectors, 0)
                 running_orthogonal_loss += (loss_ / shapes_).item()
                 loss += (args.orthogonal_k / shapes_) * loss_
             loss.backward()
