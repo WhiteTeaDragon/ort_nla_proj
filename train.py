@@ -232,7 +232,7 @@ if __name__ == '__main__':
     orthogonal = (args.orthogonal_k > 0)
 
     best_val_acc = 0
-    ort_vectors = generate_random_vectors(model, trainset[0].shape)
+    ort_vectors = generate_random_vectors(model, trainset[0][0].shape)
     for epoch in range(epochs):
         running_loss = 0.0
         running_orthogonal_loss = 0.0
