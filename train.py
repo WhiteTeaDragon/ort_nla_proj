@@ -76,7 +76,7 @@ arch_mapping = {
 }
 
 
-def save_chp(epoch, model, optimizer, loss, args, best=False):
+def save_chp(epoch, model, optimizer, loss, args, ort_vectors, best=False):
     checkpoints_dir = pathlib.Path(args.checkpoints_path)
     checkpoints_dir.mkdir(exist_ok=True, parents=True)
     if best:
@@ -92,6 +92,7 @@ def save_chp(epoch, model, optimizer, loss, args, best=False):
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'loss': loss,
+        'ort_vectors': ort_vectors
     }, checkpoints_dir / filename)
 
 
@@ -263,7 +264,7 @@ if __name__ == '__main__':
         val_acc, val_loss = count_acc(test_loader)
         if best_val_acc < val_acc:
             best_val_acc = val_acc
-            save_chp(epoch, model, optimizer, loss, args, best=True)
+            save_chp(epoch, model, optimizer, loss, args, ort_vectors, best=True)
         wandb.log({'loss': running_loss / len(train_loader),
                    'orthogonal_loss':
                        running_orthogonal_loss / len(train_loader),
@@ -274,8 +275,8 @@ if __name__ == '__main__':
         print('%d loss: %.3f' % (epoch + 1, running_loss / len(train_loader)))
         print(f'train acc: {count_acc(train_loader)}')
         if epoch != 0 and epoch % args.save_chp_every == 0:
-            save_chp(epoch, model, optimizer, loss, args)
+            save_chp(epoch, model, optimizer, loss, args, ort_vectors)
 
     print(f'test acc: {count_acc(test_loader)}')
 
-    save_chp(epoch, model, optimizer, loss, args)
+    save_chp(epoch, model, optimizer, loss, args, ort_vectors)
