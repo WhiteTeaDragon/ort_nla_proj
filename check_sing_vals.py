@@ -88,7 +88,7 @@ def check_sing_vals(model, ort_vectors, index):
                                                      stride=child.stride,
                                                      padding=child.padding)
             before_svd = get_ready_for_svd(child.weight.cpu().permute(
-                [2, 3, 0, 1]), vector.shape, child.stride)
+                [2, 3, 0, 1]), vector.shape[1:], child.stride)
             svdvals = torch.linalg.svdvals(before_svd[-1])[:, :, 0]
             max_sing_true = svdvals.max()
             print(index, torch.linalg.norm(x - vector), max_sing_true)
@@ -106,6 +106,9 @@ if __name__ == "__main__":
 
     model, ort_vectors = load_checkpoint(args.cp,
                                          args.cp.split('/')[-1].split('_'))
+    print(len(ort_vectors))
+    for i in range(len(ort_vectors)):
+        print(ort_vectors[i].shape)
     wandb.init(
         project="ort_nla"
     )
