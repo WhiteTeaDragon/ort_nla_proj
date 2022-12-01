@@ -2,6 +2,8 @@ import torch
 import argparse
 import numpy as np
 import wandb
+from einops import rearrange
+
 from .train import arch_mapping
 
 
@@ -76,6 +78,24 @@ def get_ready_for_svd(kernel, pad_to, strides):
            transpose_for_svd
 
 
+def get_sing_vals(kernel, pad_to, stride):
+    if kernel.shape[0] > pad_to[0]:
+        k, n = kernel.shape[0], pad_to[0]
+        assert k == n + 2 or k == n + 1
+        pad_kernel = torch.nn.functional.pad(kernel, (0, 0, 0, 0,
+                                             0, max(k, 2 * n) - k, 0,
+                                                      max(k, 2 * n) - k))
+        tmp = rearrange(pad_kernel,
+                        '(w1 k1) (w2 k2) cin cout -> (k1 k2) (w1 w2) cin cout',
+                        w1=2, w2=2)
+        sv = torch.sqrt((tmp.sum(1) ** 2).sum(0))
+        return sv
+    before_svd = get_ready_for_svd(kernel.cpu().permute(
+        [2, 3, 0, 1]), pad_to, stride)
+    svdvals = torch.linalg.svdvals(before_svd[-1])[:, :, 0]
+    return svdvals
+
+
 def check_sing_vals(model, ort_vectors, index):
     with torch.no_grad():
         for child_name, child in model.named_children():
@@ -88,9 +108,8 @@ def check_sing_vals(model, ort_vectors, index):
                 x = torch.nn.functional.conv_transpose2d(x_p, child.weight,
                                                          stride=child.stride,
                                                          padding=child.padding)
-                before_svd = get_ready_for_svd(child.weight.cpu().permute(
-                    [2, 3, 0, 1]), vector.shape[1:], child.stride)
-                svdvals = torch.linalg.svdvals(before_svd[-1])[:, :, 0]
+                svdvals = get_sing_vals(child.weight, vector.shape[1:],
+                                        child.stride)
                 max_sing_true = svdvals.max()
                 print(index, torch.linalg.norm(x - vector), max_sing_true)
                 wandb.log({f"singular_values_{index}":
