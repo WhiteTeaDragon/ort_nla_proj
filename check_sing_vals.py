@@ -77,25 +77,26 @@ def get_ready_for_svd(kernel, pad_to, strides):
 
 
 def check_sing_vals(model, ort_vectors, index):
-    for child_name, child in model.named_children():
-        if 'Conv' in child.__class__.__name__:
-            vector = ort_vectors[index]
-            index += 1
-            x_p = torch.nn.functional.conv2d(vector, child.weight,
-                                             stride=child.stride,
-                                             padding=child.padding)
-            x = torch.nn.functional.conv_transpose2d(x_p, child.weight,
-                                                     stride=child.stride,
-                                                     padding=child.padding)
-            before_svd = get_ready_for_svd(child.weight.cpu().permute(
-                [2, 3, 0, 1]), vector.shape[1:], child.stride)
-            svdvals = torch.linalg.svdvals(before_svd[-1])[:, :, 0]
-            max_sing_true = svdvals.max()
-            print(index, torch.linalg.norm(x - vector), max_sing_true)
-            wandb.log({f"singular_values_{index}":
-                       wandb.Histogram(max_sing_true)})
-        else:
-            index = check_sing_vals(child, ort_vectors, index)
+    with torch.no_grad():
+        for child_name, child in model.named_children():
+            if 'Conv' in child.__class__.__name__:
+                vector = ort_vectors[index]
+                index += 1
+                x_p = torch.nn.functional.conv2d(vector, child.weight,
+                                                 stride=child.stride,
+                                                 padding=child.padding)
+                x = torch.nn.functional.conv_transpose2d(x_p, child.weight,
+                                                         stride=child.stride,
+                                                         padding=child.padding)
+                before_svd = get_ready_for_svd(child.weight.cpu().permute(
+                    [2, 3, 0, 1]), vector.shape[1:], child.stride)
+                svdvals = torch.linalg.svdvals(before_svd[-1])[:, :, 0]
+                max_sing_true = svdvals.max()
+                print(index, torch.linalg.norm(x - vector), max_sing_true)
+                wandb.log({f"singular_values_{index}":
+                           wandb.Histogram(max_sing_true)})
+            else:
+                index = check_sing_vals(child, ort_vectors, index)
     return index
 
 
@@ -106,9 +107,6 @@ if __name__ == "__main__":
 
     model, ort_vectors = load_checkpoint(args.cp,
                                          args.cp.split('/')[-1].split('_'))
-    print(len(ort_vectors))
-    for i in range(len(ort_vectors)):
-        print(ort_vectors[i].shape)
     wandb.init(
         project="ort_nla"
     )
