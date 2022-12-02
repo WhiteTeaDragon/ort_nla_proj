@@ -4,7 +4,7 @@ import numpy as np
 import wandb
 from einops import rearrange
 
-from .train import arch_mapping
+from .train import arch_mapping, apply_to_vectors
 
 
 if torch.cuda.is_available():
@@ -100,18 +100,15 @@ def check_sing_vals(model, ort_vectors, index):
     with torch.no_grad():
         for child_name, child in model.named_children():
             if 'Conv' in child.__class__.__name__:
-                vector = ort_vectors[index]
-                index += 1
-                x_p = torch.nn.functional.conv2d(vector, child.weight,
-                                                 stride=child.stride,
-                                                 padding=child.padding)
-                x = torch.nn.functional.conv_transpose2d(x_p, child.weight,
-                                                         stride=child.stride,
-                                                         padding=child.padding)
+                vectors = ort_vectors[index]
+                mean_norm = 0
+                index, mean_norm, vector = apply_to_vectors(child, index,
+                                                            mean_norm, vectors)
+                mean_norm /= len(vectors)
                 svdvals = get_sing_vals(child.weight, vector.shape[1:],
                                         child.stride)
                 max_sing_true = svdvals.max()
-                print(index, torch.linalg.norm(x - vector), max_sing_true)
+                print(index, mean_norm, max_sing_true)
                 wandb.log({f"singular_values_{index}":
                            wandb.Histogram(max_sing_true)})
             else:

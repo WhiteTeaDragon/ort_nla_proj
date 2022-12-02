@@ -20,19 +20,28 @@ else:
     device = torch.device('cpu')
 
 
+def apply_to_vectors(child, index, mean_norm, vectors):
+    for i in range(len(vectors)):
+        vector = vectors[i]
+        index += 1
+        x_p = torch.nn.functional.conv2d(vector, child.weight,
+                                         stride=child.stride,
+                                         padding=child.padding)
+        x = torch.nn.functional.conv_transpose2d(
+            x_p, child.weight, stride=child.stride,
+            padding=child.padding)
+        mean_norm += torch.linalg.norm(x - vector)
+    return index, mean_norm, vector
+
+
 def orthogonal_loss(model, ort_vectors, index):
     loss, shapes = 0, 0
     for child_name, child in model.named_children():
         if 'Conv' in child.__class__.__name__:
-            vector = ort_vectors[index]
-            index += 1
-            x_p = torch.nn.functional.conv2d(vector, child.weight,
-                                             stride=child.stride,
-                                             padding=child.padding)
-            x = torch.nn.functional.conv_transpose2d(x_p, child.weight,
-                                                     stride=child.stride,
-                                                     padding=child.padding)
-            loss += torch.linalg.norm(x - vector)
+            vectors = ort_vectors[index]
+            index, sum_norms, vector = apply_to_vectors(child, index, 0,
+                                                        vectors)
+            loss += sum_norms
             shapes += 2 * child.weight.shape[0] ** 2
         else:
             loss_, shapes_, index = orthogonal_loss(child, ort_vectors, index)
@@ -107,12 +116,13 @@ def get_conv_output_shapes(model, shape=(3, 32, 32)):
     return conv_outputs
 
 
-def generate_random_vectors(model, input_shape):
+def generate_random_vectors(model, input_shape, num_of_vectors):
     conv_outputs = get_conv_output_shapes(model, input_shape)
     conv_inputs = [input_shape] + conv_outputs[:-1]
     random_vectors = []
     for i in range(len(conv_inputs)):
-        random_vectors.append(torch.rand(conv_inputs[i]).to(device))
+        random_vectors.append(torch.rand([num_of_vectors] + list(conv_inputs[i]
+                                                                 )).to(device))
     return random_vectors
 
 
@@ -139,6 +149,7 @@ if __name__ == '__main__':
                         type=str)
     parser.add_argument('--dataset-root', default='./data', type=str)
     parser.add_argument('--orthogonal-k', default=-1, type=float)
+    parser.add_argument('--num-of-vectors', default=1, type=int)
 
     parser.set_defaults(nesterov=False)
 
