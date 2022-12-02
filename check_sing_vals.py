@@ -79,6 +79,7 @@ def get_ready_for_svd(kernel, pad_to, strides):
 
 
 def get_sing_vals(kernel, pad_to, stride):
+    kernel = kernel.cpu().permute([2, 3, 0, 1])
     if kernel.shape[0] > pad_to[0]:
         k, n = kernel.shape[0], pad_to[0]
         assert k == n + 2 or k == n + 1
@@ -90,8 +91,7 @@ def get_sing_vals(kernel, pad_to, stride):
                         w1=2, w2=2)
         sv = torch.sqrt((tmp.sum(1) ** 2).sum(0))
         return sv
-    before_svd = get_ready_for_svd(kernel.cpu().permute(
-        [2, 3, 0, 1]), pad_to, stride)
+    before_svd = get_ready_for_svd(kernel, pad_to, stride)
     svdvals = torch.linalg.svdvals(before_svd[-1])[:, :, 0]
     return svdvals
 
