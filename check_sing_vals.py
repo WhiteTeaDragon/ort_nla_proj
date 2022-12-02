@@ -101,9 +101,8 @@ def check_sing_vals(model, ort_vectors, index):
         for child_name, child in model.named_children():
             if 'Conv' in child.__class__.__name__:
                 vectors = ort_vectors[index]
-                mean_norm = 0
-                index, mean_norm, vector = apply_to_vectors(child, index,
-                                                            mean_norm, vectors)
+                mean_norm, vector = apply_to_vectors(child, mean_norm, vectors)
+                index += 1
                 mean_norm /= len(vectors)
                 svdvals = get_sing_vals(child.weight, vector.shape[1:],
                                         child.stride)

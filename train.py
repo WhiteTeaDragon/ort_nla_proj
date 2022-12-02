@@ -20,10 +20,9 @@ else:
     device = torch.device('cpu')
 
 
-def apply_to_vectors(child, index, mean_norm, vectors):
+def apply_to_vectors(child, mean_norm, vectors):
     for i in range(len(vectors)):
         vector = vectors[i]
-        index += 1
         x_p = torch.nn.functional.conv2d(vector, child.weight,
                                          stride=child.stride,
                                          padding=child.padding)
@@ -31,7 +30,7 @@ def apply_to_vectors(child, index, mean_norm, vectors):
             x_p, child.weight, stride=child.stride,
             padding=child.padding)
         mean_norm += torch.linalg.norm(x - vector)
-    return index, mean_norm, vector
+    return mean_norm, vector
 
 
 def orthogonal_loss(model, ort_vectors, index):
@@ -39,8 +38,8 @@ def orthogonal_loss(model, ort_vectors, index):
     for child_name, child in model.named_children():
         if 'Conv' in child.__class__.__name__:
             vectors = ort_vectors[index]
-            index, sum_norms, vector = apply_to_vectors(child, index, 0,
-                                                        vectors)
+            sum_norms, vector = apply_to_vectors(child, 0, vectors)
+            index += 1
             loss += sum_norms
             shapes += 2 * child.weight.shape[0] ** 2
         else:
