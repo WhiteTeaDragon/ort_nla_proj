@@ -115,13 +115,25 @@ def get_conv_output_shapes(model, shape=(3, 32, 32)):
     return conv_outputs
 
 
-def generate_random_vectors(model, input_shape, num_of_vectors):
+def generate_random_vectors(model, input_shape, num_of_vectors, dist,
+                            dist_mean, dist_std):
     conv_outputs = get_conv_output_shapes(model, input_shape)
     conv_inputs = [input_shape] + conv_outputs[:-1]
     random_vectors = []
     for i in range(len(conv_inputs)):
-        random_vectors.append(torch.rand([num_of_vectors] + list(conv_inputs[i]
+        if dist == 'uniform':
+            random_vectors.append(torch.rand([num_of_vectors] + list(conv_inputs[i]
                                                                  )).to(device))
+        elif dist == 'normal':
+            standard_normal_dist = torch.randn([num_of_vectors] + list(conv_inputs[i]))
+            normal_dist = standard_normal_dist * dist_std + dist_mean
+            random_vectors.append(normal_dist.to(device))
+        elif dist == 'rademacher':
+            uniform_dist = torch.rand([num_of_vectors] + list(conv_inputs[i]))
+            rademacher_dist = torch.where(uniform_dist < 0.5, -1., 1.)
+            random_vectors.append(rademacher_dist.to(device))
+        else:
+            raise Exception("Specify correct vector distribution: --dist <>")
     return random_vectors
 
 
@@ -149,6 +161,9 @@ if __name__ == '__main__':
     parser.add_argument('--dataset-root', default='./data', type=str)
     parser.add_argument('--orthogonal-k', default=-1, type=float)
     parser.add_argument('--num-of-vectors', default=1, type=int)
+    parser.add_argument('--dist', default='uniform', type=str)
+    parser.add_argument('--dist_mean', default=0, type=int)
+    parser.add_argument('--dist_std', default=1, type=int)
 
     parser.set_defaults(nesterov=False)
 
@@ -244,7 +259,8 @@ if __name__ == '__main__':
 
     best_val_acc = 0
     ort_vectors = generate_random_vectors(model, trainset[0][0].shape,
-                                          args.num_of_vectors)
+                                          args.num_of_vectors, args.dist,
+                                          args.dist_mean, args.dist_std)
     for epoch in range(epochs):
         running_loss = 0.0
         running_orthogonal_loss = 0.0
