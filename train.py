@@ -93,7 +93,7 @@ def save_chp(epoch, model, optimizer, loss, args, ort_vectors, best=False):
                f"epochs_{args.epochs}_opt_{args.opt}_init_lr_{args.init_lr}_" \
                f"batch_size_{args.batch_size}_epoch_{epoch}_" \
                f"ol_{args.orthogonal_k}_" \
-               f"dataset_{args.dataset}_num-of-vectors_{args.num_of_vectors}" \
+               f"dataset_{args.dataset}_num-of-vectors_{args.num_of_vectors}_" \
                f"dist_{args.dist}_mean_{args.dist_mean}_std_{args.dist_std}" \
                f".pth"
     torch.save({
