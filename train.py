@@ -33,17 +33,21 @@ def apply_to_vectors(child, mean_norm, vectors):
     return mean_norm, vector
 
 
-def orthogonal_loss(model, ort_vectors, index):
+def orthogonal_loss(model, ort_vectors, index, wandb_loss=False):
     loss, shapes = 0, 0
     for child_name, child in model.named_children():
         if 'Conv' in child.__class__.__name__:
             vectors = ort_vectors[index]
-            sum_norms, vector = apply_to_vectors(child, 0, vectors)
+            sum_norms, _ = apply_to_vectors(child, 0, vectors)
             index += 1
-            loss += sum_norms
+            curr_loss = sum_norms / len(vectors)
+            loss += curr_loss
             shapes += 2 * child.weight.shape[0] ** 2
+            if wandb_loss:
+                wandb.log({f"loss_values_{index}": curr_loss.item()})
         else:
-            loss_, shapes_, index = orthogonal_loss(child, ort_vectors, index)
+            loss_, shapes_, index = orthogonal_loss(child, ort_vectors, index,
+                                                    wandb_loss)
             loss += loss_
             shapes += shapes_
     return loss, shapes, index
@@ -165,8 +169,10 @@ if __name__ == '__main__':
     parser.add_argument('--dist', default='uniform', type=str)
     parser.add_argument('--dist_mean', default=0, type=int)
     parser.add_argument('--dist_std', default=1, type=int)
+    parser.add_argument('--log-ort-loss-by-layer',
+                        dest='log_ort_loss_by_layer', action='store_true')
 
-    parser.set_defaults(nesterov=False)
+    parser.set_defaults(nesterov=False, log_ort_loss_by_layer=False)
 
     args = parser.parse_args()
 
@@ -277,7 +283,8 @@ if __name__ == '__main__':
             loss = criterion(output, y)
             if orthogonal:
                 orthogonal = True
-                loss_, shapes_, _ = orthogonal_loss(model, ort_vectors, 0)
+                loss_, shapes_, _ = orthogonal_loss(model, ort_vectors, 0,
+                                                    args.log_ort_loss_by_layer)
                 running_orthogonal_loss += (loss_ / shapes_).item()
                 loss += (args.orthogonal_k / shapes_) * loss_
             loss.backward()

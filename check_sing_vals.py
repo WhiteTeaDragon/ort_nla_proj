@@ -109,7 +109,7 @@ def check_sing_vals(model, ort_vectors, index):
                 max_sing_true = svdvals.max()
                 print(index, mean_norm, max_sing_true)
                 wandb.log({f"singular_values_{index}":
-                           wandb.Histogram(max_sing_true)})
+                           wandb.Histogram(svdvals)})
             else:
                 index = check_sing_vals(child, ort_vectors, index)
     return index
