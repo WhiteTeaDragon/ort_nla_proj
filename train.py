@@ -132,8 +132,9 @@ def generate_random_vectors(model, input_shape, num_of_vectors, dist,
     random_vectors = []
     for i in range(len(conv_inputs)):
         if dist == 'uniform':
-            random_vectors.append(torch.rand([num_of_vectors] +
-                                             list(conv_inputs[i])).to(device))
+            uniform_dist = torch.rand([num_of_vectors] + list(conv_inputs[i]))
+            uniform_dist = (uniform_dist - 0.5) * 2
+            random_vectors.append(uniform_dist.to(device))
         elif dist == 'normal':
             standard_normal_dist = torch.randn([num_of_vectors] + list(
                 conv_inputs[i]))
