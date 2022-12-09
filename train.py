@@ -33,21 +33,26 @@ def apply_to_vectors(child, mean_norm, vectors):
     return mean_norm, vector
 
 
-def orthogonal_loss(model, ort_vectors, index, wandb_loss=False):
+def orthogonal_loss(model, ort_vectors, index, wandb_loss=False,
+                    normalize_by_layer=False):
     loss, shapes = 0, 0
     for child_name, child in model.named_children():
         if 'Conv' in child.__class__.__name__:
             vectors = ort_vectors[index]
-            sum_norms, _ = apply_to_vectors(child, 0, vectors)
+            sum_norms, vector = apply_to_vectors(child, 0, vectors)
             index += 1
             curr_loss = sum_norms / len(vectors)
+            if normalize_by_layer:
+                curr_loss /= vector.numel()
+            else:
+                shapes += vector.numel()
             loss += curr_loss
-            shapes += 2 * child.weight.shape[0] ** 2
             if wandb_loss:
                 wandb.log({f"loss_values_{index}": curr_loss.item()})
         else:
             loss_, shapes_, index = orthogonal_loss(child, ort_vectors, index,
-                                                    wandb_loss)
+                                                    wandb_loss,
+                                                    normalize_by_layer)
             loss += loss_
             shapes += shapes_
     return loss, shapes, index
@@ -127,10 +132,11 @@ def generate_random_vectors(model, input_shape, num_of_vectors, dist,
     random_vectors = []
     for i in range(len(conv_inputs)):
         if dist == 'uniform':
-            random_vectors.append(torch.rand([num_of_vectors] + list(conv_inputs[i]
-                                                                 )).to(device))
+            random_vectors.append(torch.rand([num_of_vectors] +
+                                             list(conv_inputs[i])).to(device))
         elif dist == 'normal':
-            standard_normal_dist = torch.randn([num_of_vectors] + list(conv_inputs[i]))
+            standard_normal_dist = torch.randn([num_of_vectors] + list(
+                conv_inputs[i]))
             normal_dist = standard_normal_dist * dist_std + dist_mean
             random_vectors.append(normal_dist.to(device))
         elif dist == 'rademacher':
@@ -171,8 +177,11 @@ if __name__ == '__main__':
     parser.add_argument('--dist_std', default=1, type=int)
     parser.add_argument('--log-ort-loss-by-layer',
                         dest='log_ort_loss_by_layer', action='store_true')
+    parser.add_argument('--normalize-ort-by-layer',
+                        dest='normalize_ort_by_layer', action='store_true')
 
-    parser.set_defaults(nesterov=False, log_ort_loss_by_layer=False)
+    parser.set_defaults(nesterov=False, log_ort_loss_by_layer=False,
+                        normalize_ort_by_layer=False)
 
     args = parser.parse_args()
 
@@ -285,6 +294,7 @@ if __name__ == '__main__':
                 orthogonal = True
                 loss_, shapes_, _ = orthogonal_loss(model, ort_vectors, 0,
                                                     args.log_ort_loss_by_layer)
+                shapes_ = max(1, shapes_)
                 running_orthogonal_loss += (loss_ / shapes_).item()
                 loss += (args.orthogonal_k / shapes_) * loss_
             loss.backward()
