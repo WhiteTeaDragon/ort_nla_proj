@@ -294,7 +294,9 @@ if __name__ == '__main__':
             if orthogonal:
                 orthogonal = True
                 loss_, shapes_, _ = orthogonal_loss(model, ort_vectors, 0,
-                                                    args.log_ort_loss_by_layer)
+                                                    args.log_ort_loss_by_layer,
+                                                    args.normalize_ort_by_layer
+                                                    )
                 shapes_ = max(1, shapes_)
                 running_orthogonal_loss += (loss_ / shapes_).item()
                 loss += (args.orthogonal_k / shapes_) * loss_
@@ -310,7 +312,8 @@ if __name__ == '__main__':
         val_acc, val_loss = count_acc(test_loader)
         if best_val_acc < val_acc:
             best_val_acc = val_acc
-            save_chp(epoch, model, optimizer, loss, args, ort_vectors, best=True)
+            save_chp(epoch, model, optimizer, loss, args, ort_vectors,
+                     best=True)
         wandb.log({'loss': running_loss / len(train_loader),
                    'orthogonal_loss':
                        running_orthogonal_loss / len(train_loader),
