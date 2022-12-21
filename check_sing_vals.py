@@ -159,7 +159,7 @@ def check_sing_vals(model, ort_vectors, index, form_large_matrix=None):
                 print(index, mean_norm.item(), max_sing_true.item())
                 wandb.log({f"singular_values_{index}":
                            wandb.Histogram(svdvals)})
-                if form_large_matrix is not None and index > form_large_matrix:
+                if form_large_matrix is not None and index == form_large_matrix:
                     # works only for the case of n > k, otherwise might give
                     # wrong answers
                     kernel = child.weight
