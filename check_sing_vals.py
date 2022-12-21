@@ -13,6 +13,55 @@ else:
     device = torch.device('cpu')
 
 
+def strided_method(ar, zero_out=False):
+    a = np.concatenate((ar[1:], ar))
+    L = len(ar)
+    n = a.strides[0]
+    res = np.lib.stride_tricks.as_strided(a[L-1:], (L,L), (-n,n)).copy()
+    if zero_out:
+        res[0, -1] = 0
+        res[-1, 0] = 0
+    return res
+
+
+def strided_method_for_matrices(arr, zero_out=False):
+    a = np.concatenate((arr[1:], arr))
+    L = len(arr)
+    n = a.strides[0]
+    res = np.lib.stride_tricks.as_strided(a[L-1:], (L, L, *(arr[0].shape)),
+                                          (-n, n, *(a.strides[1:])))
+    if zero_out:
+        res[0, -1] = np.zeros_like(res[0, -1])
+        res[-1, 0] = np.zeros_like(res[-1, 0])
+    return res
+
+
+def build_doubly_block_circ_matrix(k, n, kernel2d, zero_out=False):
+    if not zero_out:
+        padded_kernel = np.pad(kernel2d, [(0, n - k), (0, n - k)],
+                               mode='constant')
+    else:
+        padded_kernel = np.zeros((n, n))
+        padded_kernel[:2, :2] = kernel2d[:2, :2]
+        padded_kernel[-1, :2] = kernel2d[-1, :2]
+        padded_kernel[:2, -1] = kernel2d[:2, -1]
+        padded_kernel[-1, -1] = kernel2d[-1, -1]
+    arr = [0] * n
+    for i in range(n):
+        arr[i] = strided_method(padded_kernel[i], zero_out)
+    return strided_method_for_matrices(arr, zero_out).transpose(
+        0, 2, 1, 3).reshape(-1, n**2)
+
+
+def build_matrix(k, n, in_ch, out_ch, kernel, zero_out=False):
+    dbc_matrices = [[0] * in_ch for _ in range(out_ch)]
+    for i in range(out_ch):
+        for j in range(in_ch):
+            dbc_matrices[i][j] = build_doubly_block_circ_matrix(
+                k, n, kernel[:, :, i, j], zero_out)
+    return np.block(dbc_matrices)
+
+
 def load_checkpoint(path, info):
     filename = path.split('/')[-1]
     num_classes = 10
@@ -96,7 +145,7 @@ def get_sing_vals(kernel, pad_to, stride):
     return svdvals
 
 
-def check_sing_vals(model, ort_vectors, index):
+def check_sing_vals(model, ort_vectors, index, form_large_matrix=None):
     with torch.no_grad():
         for child_name, child in model.named_children():
             if 'Conv' in child.__class__.__name__:
@@ -110,14 +159,34 @@ def check_sing_vals(model, ort_vectors, index):
                 print(index, mean_norm.item(), max_sing_true.item())
                 wandb.log({f"singular_values_{index}":
                            wandb.Histogram(svdvals)})
+                if form_large_matrix is not None and index > form_large_matrix:
+                    # works only for the case of n > k, otherwise might give
+                    # wrong answers
+                    kernel = child.weight
+                    out_ch, in_ch, k1, k2 = kernel.shape
+                    assert k1 == k2
+                    kernel = kernel.permute([2, 3, 0, 1]).cpu().numpy()
+                    new_kernel = np.zeros_like(kernel)
+                    new_kernel[:2, :2] = kernel[1:, 1:]
+                    new_kernel[-1, -1] = kernel[0, 0]
+                    new_kernel[:-1, -1] = kernel[1:, 0]
+                    new_kernel[-1, :-1] = kernel[0, 1:]
+                    conv = build_matrix(k1, vector.shape[1], in_ch, out_ch,
+                                        new_kernel, zero_out=True)
+                    conv_t = conv.T
+                    matrix_for_vectors = conv_t @ conv - np.eye(conv.shape[0])
+                    print("final matrix norm",
+                          np.linalg.norm(matrix_for_vectors))
             else:
-                index = check_sing_vals(child, ort_vectors, index)
+                index = check_sing_vals(child, ort_vectors, index,
+                                        form_large_matrix)
     return index
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--cp', required=True, type=str)
+    parser.add_argument('--form-large-matrix', type=int, default=None)
     args = parser.parse_args()
 
     model, ort_vectors = load_checkpoint(args.cp,
@@ -125,4 +194,4 @@ if __name__ == "__main__":
     wandb.init(
         project="ort_nla"
     )
-    check_sing_vals(model, ort_vectors, 0)
+    check_sing_vals(model, ort_vectors, 0, args.form_large_matrix)
