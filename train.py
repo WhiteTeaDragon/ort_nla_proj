@@ -33,7 +33,7 @@ def apply_to_vectors(child, mean_norm, vectors):
 
 
 def orthogonal_loss(model, ort_vectors, index, wandb_loss=False,
-                    normalize_by_layer=False):
+                    normalize_by_layer=False, log_by_epoch=None):
     loss, shapes = 0, 0
     for child_name, child in model.named_children():
         if 'Conv' in child.__class__.__name__:
@@ -48,10 +48,13 @@ def orthogonal_loss(model, ort_vectors, index, wandb_loss=False,
             loss += curr_loss
             if wandb_loss:
                 wandb.log({f"loss_values_{index}": curr_loss.item()})
+            if log_by_epoch is not None:
+                log_by_epoch[f"loss_values_{index}"] = curr_loss.item()
         else:
             loss_, shapes_, index = orthogonal_loss(child, ort_vectors, index,
                                                     wandb_loss,
-                                                    normalize_by_layer)
+                                                    normalize_by_layer,
+                                                    log_by_epoch)
             loss += loss_
             shapes += shapes_
     return loss, shapes, index
@@ -92,7 +95,8 @@ arch_mapping = {
 }
 
 
-def save_chp(epoch, model, optimizer, loss, args, ort_vectors, best=False):
+def save_chp(epoch, model, optimizer, loss, args, ort_vectors, best=False,
+             save_dicts=None):
     checkpoints_dir = pathlib.Path(args.checkpoints_path)
     checkpoints_dir.mkdir(exist_ok=True, parents=True)
     if best:
@@ -109,7 +113,8 @@ def save_chp(epoch, model, optimizer, loss, args, ort_vectors, best=False):
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'loss': loss,
-        'ort_vectors': ort_vectors
+        'ort_vectors': ort_vectors,
+        'ort_loss_dicts': save_dicts
     }, checkpoints_dir / filename)
 
 
@@ -177,11 +182,14 @@ if __name__ == '__main__':
     parser.add_argument('--dist_std', default=1, type=int)
     parser.add_argument('--log-ort-loss-by-layer',
                         dest='log_ort_loss_by_layer', action='store_true')
+    parser.add_argument('--log-ort-loss-by-epoch',
+                        dest='log_ort_loss_by_epoch', action='store_true')
     parser.add_argument('--normalize-ort-by-layer',
                         dest='normalize_ort_by_layer', action='store_true')
 
     parser.set_defaults(nesterov=False, log_ort_loss_by_layer=False,
-                        normalize_ort_by_layer=False)
+                        normalize_ort_by_layer=False,
+                        log_ort_loss_by_epoch=False)
 
     args = parser.parse_args()
 
@@ -277,6 +285,8 @@ if __name__ == '__main__':
     ort_vectors = generate_random_vectors(model, trainset[0][0].shape,
                                           args.num_of_vectors, args.dist,
                                           args.dist_mean, args.dist_std)
+    if args.log_ort_loss_by_epoch:
+        save_dicts = []
     for epoch in range(epochs):
         running_loss = 0.0
         running_orthogonal_loss = 0.0
@@ -312,13 +322,22 @@ if __name__ == '__main__':
             best_val_acc = val_acc
             save_chp(epoch, model, optimizer, loss, args, ort_vectors,
                      best=True)
-        wandb.log({'loss': running_loss / len(train_loader),
-                   'orthogonal_loss':
-                       running_orthogonal_loss / len(train_loader),
-                   'acc': count_acc(train_loader)[0], 'val_acc': val_acc,
-                   'val_loss': val_loss, 'epoch': epoch, 'lr': lr,
-                   'time': time() - opening, 'val_time': time() - training_end,
-                   'train_time': training_end - opening})
+        wandb_log_dict = {'loss': running_loss / len(train_loader),
+                          'orthogonal_loss':
+                              running_orthogonal_loss / len(train_loader),
+                          'acc': count_acc(train_loader)[0],
+                          'val_acc': val_acc, 'val_loss': val_loss,
+                          'epoch': epoch, 'lr': lr, 'time': time() - opening,
+                          'val_time': time() - training_end,
+                          'train_time': training_end - opening}
+        if args.log_ort_loss_by_epoch:
+            dict_log = {}
+            _ = orthogonal_loss(model, ort_vectors, 0,
+                                args.log_ort_loss_by_layer,
+                                args.normalize_ort_by_layer, dict_log)
+            wandb_log_dict.update(dict_log)
+            save_dicts.append(dict_log)
+        wandb.log(wandb_log_dict)
         print('%d loss: %.3f' % (epoch + 1, running_loss / len(train_loader)))
         print(f'train acc: {count_acc(train_loader)}')
         if epoch != 0 and epoch % args.save_chp_every == 0:
@@ -326,4 +345,5 @@ if __name__ == '__main__':
 
     print(f'test acc: {count_acc(test_loader)}')
 
-    save_chp(epoch, model, optimizer, loss, args, ort_vectors)
+    save_chp(epoch, model, optimizer, loss, args, ort_vectors,
+             save_dicts=save_dicts)
