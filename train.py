@@ -11,7 +11,6 @@ from contextlib import redirect_stdout
 import io
 import torchsummary as ts
 
-from .WideResNet import wide_resnet16_10
 from .vgg import vgg19
 
 if torch.cuda.is_available():
@@ -90,7 +89,6 @@ classes_mapping = {
 }
 
 arch_mapping = {
-    'wrn16-10': wide_resnet16_10,
     'vgg19': vgg19
 }
 
@@ -165,7 +163,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', default=128, type=int)
     parser.add_argument('--epochs', default=200, type=int)
     parser.add_argument('--init-lr', default=0.01, type=float)
-    parser.add_argument('--architecture', default='wrn16-10',
+    parser.add_argument('--architecture', default='vgg19',
                         choices=arch_mapping.keys())
     parser.add_argument('--opt', default="SGD", choices=["Adam", "SGD"])
     parser.add_argument('--weight-dec', default=1e-4, type=float)
@@ -233,10 +231,7 @@ if __name__ == '__main__':
     """#### Model without clipping"""
 
     kwargs = {}
-    if 'wrn' in args.architecture:
-        kwargs["num_classes"] = num_classes
-        model = arch_mapping[args.architecture](**kwargs).to(device)
-    elif 'vgg' in args.architecture:
+    if 'vgg' in args.architecture:
         model = arch_mapping[args.architecture](num_classes=num_classes,
                                                 **kwargs).to(device)
     else:
@@ -259,14 +254,7 @@ if __name__ == '__main__':
                                     weight_decay=args.weight_dec,
                                     momentum=0.9, nesterov=args.nesterov)
     lr_steps = epochs * len(train_loader)
-    if 'wrn' in args.architecture:
-        assert args.epochs in [1, 200, 400]
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer, milestones=[0.3 * args.epochs * len(train_loader),
-                                   0.6 * args.epochs * len(train_loader),
-                                   0.8 * args.epochs * len(train_loader)],
-            gamma=0.2)
-    elif 'vgg' in args.architecture:
+    if 'vgg' in args.architecture:
         assert args.epochs in [1, 140]
         scheduler = torch.optim.lr_scheduler.MultiStepLR(
             optimizer,
