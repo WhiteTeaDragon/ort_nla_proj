@@ -21,16 +21,15 @@ else:
 
 
 def apply_to_vectors(child, mean_norm, vectors):
-    for i in range(len(vectors)):
-        vector = vectors[i]
-        x_p = torch.nn.functional.conv2d(vector, child.weight,
+    x_p = torch.nn.functional.conv2d(vectors, child.weight,
                                          stride=child.stride,
                                          padding=child.padding)
-        x = torch.nn.functional.conv_transpose2d(
+    x = torch.nn.functional.conv_transpose2d(
             x_p, child.weight, stride=child.stride,
             padding=child.padding)
-        mean_norm += torch.linalg.norm(x - vector)
-    return mean_norm, vector
+    mean_norm += torch.linalg.norm((x - vectors).reshape(len(vectors), -1),
+                                   dim=1).sum()
+    return mean_norm, vectors[0]
 
 
 def orthogonal_loss(model, ort_vectors, index, wandb_loss=False,
@@ -292,7 +291,6 @@ if __name__ == '__main__':
             output = model(X)
             loss = criterion(output, y)
             if orthogonal:
-                orthogonal = True
                 loss_, shapes_, _ = orthogonal_loss(model, ort_vectors, 0,
                                                     args.log_ort_loss_by_layer,
                                                     args.normalize_ort_by_layer
